@@ -1,0 +1,284 @@
+#!/bin/bash
+# Before start, prepare multiple EC2 instances(ex, 2 ea).
+# Note their Internal IP for cluster setting.
+# The instances should be able to communicate with some ports like 22 for SSH.
+# In test environment, open all ports in same network only.
+
+# resolv.conf will be changed after clustering
+sudo cp /etc/resolv.conf /etc/resolv.conf.backup
+
+###################################
+######## DESCRIBE MANUALLY ########
+###################################
+MASTER_01=172.31.46.158
+# MASTER_02=172.31.0.0
+# MASTER_03=172.31.0.0
+WORKER_01=172.31.46.114
+WORKER_02=172.31.47.84
+# WORKER_03=172.31.0.0
+# WORKER_04=172.31.0.0
+# WORKER_05=172.31.0.0
+
+# Install Git for cloning kubespray
+sudo yum install -y git
+
+# Need to install Python3 for other dependencies like Ansible
+# Yum install python 3.6 and it's not enough latest kubespray version
+# So use pyenv to install Python3 higher version
+sudo yum install -y epel-release
+sudo yum install -y openssl openssl-devel openssl11 openssl11-devel
+export CPPFLAGS="$(pkg-config --cflags openssl11)"
+export LDFLAGS="$(pkg-config --libs openssl11)"
+sudo yum install -y gcc make patch zlib-devel bzip2 bzip2-devel readline-devel sqlite sqlite-devel tk-devel libffi-devel xz-devel
+
+# Install pyenv
+curl -L https://raw.githubusercontent.com/pyenv/pyenv-installer/master/bin/pyenv-installer | bash
+cat <<EOF | tee -a ~/.bashrc
+export PYENV_ROOT="\$HOME/.pyenv"
+command -v pyenv >/dev/null || export PATH="\$PYENV_ROOT/bin:\$PATH"
+eval "\$(pyenv init -)"
+EOF
+. ~/.bashrc
+
+# Install python 3.10.12 using pyenv
+pyenv install 3.10.12
+pyenv global 3.10.12
+cat <<EOF | tee -a ~/.bashrc
+export PATH="\$PYENV_ROOT/versions/3.10.12/bin:\$PATH"
+EOF
+. ~/.bashrc
+
+# Clone kubespray
+git clone https://github.com/kubernetes-sigs/kubespray.git
+cd kubespray
+
+# Error: during install ansible
+export LANG=en_US.UTF-8
+export LC_ALL=en_US.UTF-8
+
+# Upgrade pip and setuptools
+python3 -m pip install --upgrade --ignore-installed pip setuptools
+
+# Install all dependencies like Ansible
+python3 -m pip install -r requirements.txt
+
+# Set inventory
+cp -rfp inventory/sample inventory/mycluster
+
+# Manage addons
+# You can install each addon by yourself, but...
+cp inventory/mycluster/group_vars/k8s_cluster/addons.yml inventory/mycluster/group_vars/k8s_cluster/addons.yml.backup
+cat <<EOF | tee inventory/mycluster/group_vars/k8s_cluster/addons.yml
+---
+# Kubernetes dashboard
+dashboard_enabled: true
+# Helm deployment
+helm_enabled: true
+
+# Registry deployment
+registry_enabled: false
+
+# Metrics Server deployment
+metrics_server_enabled: true
+
+# Rancher Local Path Provisioner
+local_path_provisioner_enabled: true
+
+# Local volume provisioner deployment
+local_volume_provisioner_enabled: true
+
+# CephFS provisioner deployment
+cephfs_provisioner_enabled: false
+
+# RBD provisioner deployment
+rbd_provisioner_enabled: false
+
+# Nginx ingress controller deployment
+ingress_nginx_enabled: true
+ingress_publish_status_address: ""
+
+# ALB ingress controller deployment
+ingress_alb_enabled: false
+
+# Cert manager deployment
+cert_manager_enabled: true
+
+# MetalLB deployment
+metallb_enabled: false
+metallb_speaker_enabled: "{{ metallb_enabled }}"
+
+argocd_enabled: true
+
+# The plugin manager for kubectl
+krew_enabled: false
+krew_root_dir: "/usr/local/krew"
+EOF
+
+# You should describe all internal IP's want to cluster
+declare -a IPS=($MASTER_01 $WORKER_01 $WORKER_02)
+# Generate config file
+CONFIG_FILE=inventory/mycluster/hosts.yaml python3 contrib/inventory_builder/inventory.py ${IPS[@]}
+
+# # Review and change parameters under ``inventory/mycluster/group_vars``
+# cat inventory/mycluster/group_vars/all/all.yml
+# cat inventory/mycluster/group_vars/k8s-cluster/k8s-cluster.yml
+
+# Generate private key for SSH
+if [ -f ~/.ssh/id_rsa ];
+then echo '' > /dev/null;
+else ssh-keygen -q -t rsa -N '' -f ~/.ssh/id_rsa; fi
+
+##################################
+######## MANUAL OPERATION ########
+##################################
+# Append public key to other nodes using this command
+# Copy the result 'echo "..." | sudo tee -a ...' and paste it to target node
+echo "$(sudo cat ~/.ssh/id_rsa.pub)" | sudo tee -a ~/.ssh/authorized_keys > /dev/null
+# Second chance
+echo "$(sudo cat ~/.ssh/id_rsa.pub)" | xargs -I % echo 'echo "%" | sudo tee -a ~/.ssh/authorized_keys'
+
+###################################
+######## AFTER SSH SETTING ########
+###################################
+# Deploy Kubespray with Ansible Playbook - run the playbook as root
+# The option `--become` is required, as for example writing SSL keys in /etc/,
+# installing packages and interacting with various systemd daemons.
+# Without --become the playbook will fail to run!
+ansible-playbook -i inventory/mycluster/hosts.yaml --become --become-user=root cluster.yml
+cd ..
+
+# Install k9s
+curl -L "https://github.com/derailed/k9s/releases/download/v0.27.4/k9s_Linux_amd64.tar.gz" | sudo tar -xz
+rm -f LICENSE
+rm -f README.md
+sudo mv k9s /usr/local/bin/k9s
+
+# Do this for using kubectl
+mkdir -p $HOME/.kube
+sudo cp -i /etc/kubernetes/admin.conf $HOME/.kube/config
+sudo chown $(id -u):$(id -g) $HOME/.kube/config
+
+# Ingress Nginx for bare metal
+kubectl apply -f https://raw.githubusercontent.com/kubernetes/ingress-nginx/controller-v1.8.1/deploy/static/provider/baremetal/deploy.yaml
+
+# dashboard
+kubectl create ingress dashboard --class=nginx \
+  --rule="dashboard.k8s.r-e.kr/*=kubernetes-dashboard:443,tls" \
+  --annotation nginx.ingress.kubernetes.io/backend-protocol="HTTPS" \
+  --namespace kube-system
+cat <<EOF | kubectl apply -f -
+---
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: dashboard-admin
+  namespace: kube-system
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  name: dashboard-admin
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: cluster-admin
+subjects:
+- kind: ServiceAccount
+  name: dashboard-admin
+  namespace: kube-system
+EOF
+# You can login using bearer token
+# kubectl -n kube-system create token dashboard-admin
+# When it's not used anymore,
+# kubectl -n kube-system delete serviceaccount dashboard-admin
+# kubectl -n kube-system delete clusterrolebinding dashboard-admin
+
+# ArgoCD
+kubectl create ingress argocd --class=nginx \
+  --rule="argocd.k8s.r-e.kr/*=argocd-server:443,tls" \
+  --annotation nginx.ingress.kubernetes.io/backend-protocol="HTTPS" \
+  --namespace argocd
+# You can login admin using default password
+# kubectl -n argocd get secret argocd-initial-admin-secret -o jsonpath="{.data.password}" | base64 -d ; echo
+
+#########################################
+######## Customize Your Services ########
+#########################################
+
+# Prometheus
+helm upgrade --install prometheus prometheus \
+  --repo https://prometheus-community.github.io/helm-charts
+kubectl create ingress prometheus --class=nginx \
+  --rule="prometheus.k8s.r-e.kr/*=prometheus-server:80"
+
+# Grafana
+helm upgrade --install loki grafana \
+  --repo https://grafana.github.io/helm-charts
+kubectl create ingress grafana --class=nginx \
+  --rule="grafana.k8s.r-e.kr/*=loki-grafana:80"
+# You can login admin using default password
+# kubectl get secret --namespace default loki-grafana -o jsonpath="{.data.admin-password}" | base64 --decode ; echo
+
+##################################
+######## MANUAL OPERATION ########
+##################################
+# To connect prometheus with grafana, add as datasource
+# for example, go to http://grafana.k8s.r-e.kr/connections/datasources
+# and add 'Prometheus server URL' as 'http://prometheus-server'
+# then you can add graph using prometheus query on grafana
+# Example Query(CPU Usage): 100 - (avg by (instance) (irate(node_cpu_seconds_total{mode="idle"}[5m])) * 100)
+
+# JupyterHub
+helm upgrade --install jupyterhub jupyterhub \
+  --repo https://hub.jupyter.org/helm-chart/
+kubectl create ingress jupyterhub --class=nginx \
+  --rule="jupyterhub.k8s.r-e.kr/*=proxy-public:80"
+# You can login default credential
+# jovyan / jupyter
+
+# NiFi
+helm upgrade --install nifi nifi \
+  --repo https://cetic.github.io/helm-charts \
+  --set auth.admin="CN=admin, OU=NIFI" \
+  --set auth.singleUser.username="igibabo" \
+  --set auth.singleUser.password="changemechangeme" \
+  --set properties.webProxyHost="nifi.cycloudtest.onmetaverses.com" \
+  --set replicaCount=3 \
+  --set certManager.enabled=true \
+  --set certManager.additionalDnsNames={"nifi.cycloudtest.onmetaverses.com"}
+kubectl get svc nifi -o yaml | sed "s/port: 8443/port: 443/" - | kubectl replace -f -
+kubectl create ingress nifi --class=nginx \
+  --rule="nifi.cycloudtest.onmetaverses.com/*=nifi:443,tls" \
+  --annotation nginx.ingress.kubernetes.io/backend-protocol="HTTPS"
+
+
+
+#########################
+######## Testing ########
+#########################
+
+# Spark
+# helm upgrade --install spark spark \
+#   --repo oci://registry-1.docker.io/bitnamicharts/spark
+helm install spark oci://registry-1.docker.io/bitnamicharts/spark
+kubectl create ingress spark --class=nginx \
+  --rule="spark.k8s.r-e.kr/*=proxy-public:80"
+
+# Install kustomize
+curl -s "https://raw.githubusercontent.com/kubernetes-sigs/kustomize/master/hack/install_kustomize.sh"  | bash
+sudo mv kustomize /usr/local/bin/kustomize
+
+# Install Ozone
+cd ~
+curl -L https://dlcdn.apache.org/ozone/1.3.0/ozone-1.3.0.tar.gz | tar xvfz -
+
+##########################
+######## SHUTDOWN ########
+##########################
+
+nodes=$(kubectl get nodes -o name)
+for node in ${nodes[@]}
+do
+    echo "==== Shut down $node ===="
+    ssh $node sudo shutdown -h 1
+done
