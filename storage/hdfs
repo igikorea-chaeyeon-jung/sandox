@@ -1,37 +1,14 @@
-#!/bin/bash
-# Before start, prepare multiple EC2 instances(ex, 2).
-# Note their Internal IP for cluster setting.
-# The instances should be able to communicate with some ports like 22 for SSH.
-# In test environment, open all ports in same network only.
+MASTER01=172.31.37.212
+MASTER02=172.31.37.42
+WORKER01=172.31.43.255
 
-###################################
-######## DESCRIBE MANUALLY ########
-###################################
-master01=172.31.37.64
-master02=172.31.36.114
-# MASTER_03=172.31.0.0
-worker01=172.31.41.4
-# WORKER_02=172.31.7.28
-# WORKER_03=172.31.0.0
-# WORKER_04=172.31.0.0
-# WORKER_05=172.31.0.0
-# Generate private key for SSH
 if [ -f ~/.ssh/id_rsa ];
 then echo '' > /dev/null;
 else ssh-keygen -q -t rsa -N '' -f ~/.ssh/id_rsa; fi
 
-##################################
-######## MANUAL OPERATION ########
-##################################
-# Append public key to other nodes using this command
-# Copy the result 'echo "..." | sudo tee -a ...' and paste it to target node
 echo "$(sudo cat ~/.ssh/id_rsa.pub)" | sudo tee -a ~/.ssh/authorized_keys > /dev/null
-# Second chance
 echo "$(sudo cat ~/.ssh/id_rsa.pub)" | xargs -I % echo 'echo "%" | sudo tee -a ~/.ssh/authorized_keys'
 
-##################################
-######## COMMON OPERATION ########
-##################################
 # Install java for hadoop
 sudo yum install -y java-1.8.0-openjdk-devel
 
@@ -55,9 +32,9 @@ source ~/.bashrc
 
 # Set hosts
 cat <<EOF | sudo tee -a /etc/hosts
-$master01 master01 NN1 JN1 CLUSTER
-$master02 master02 NN2 DN1 JN2
-$worker01 worker01 DN2 JN3
+$MASTER01 MASTER01 NN1 JN1 CLUSTER
+$MASTER02 MASTER02 NN2 DN1 JN2
+$WORKER01 WORKER01 DN2 JN3
 EOF
 
 # Set hdfs-site.xml
@@ -67,97 +44,86 @@ sudo mkdir -p /hdfs_data/hdfs02/
 sudo chown -R $(id -u):$(id -g) /hdfs_data
 cat <<EOF | tee $HADOOP_HOME/etc/hadoop/hdfs-site.xml
 <configuration>
-        <property>
-            <name>dfs.namenode.name.dir</name>
-            <value>
-                /hdfs_data/hdfs01/namenode,
-                /hdfs_data/hdfs02/namenode
-            </value>
-        </property>
-        <property>
-            <name>dfs.datanode.data.dir</name>
-            <value>
-                /hdfs_data/hdfs01/datanode,
-                /hdfs_data/hdfs02/datanode
-            </value>
-        </property>
-        <property>
-            <name>dfs.journalnode.edits.dir</name>
-            <value>/hdfs_data/hdfs01/journalnode</value>
-        </property>
-        <property>
-            <name>dfs.permissions.enabled</name>
-            <value>false</value>
-        </property>
-        <property>
-                <name>dfs.replication</name>
-                <value>1</value> 
-        </property>
-        <property>
-            <name>dfs.nameservices</name>
-            <value>CLUSTER</value>
-        </property>
-        <property>
-            <name>dfs.ha.namenodes.CLUSTER</name>
-            <value>
-                NN1,
-                NN2
-            </value>
-        </property>
-        <property>
-            <name>dfs.namenode.rpc-address.CLUSTER.NN1</name>
-            <value>NN1:8020</value>
-        </property>
-        <property>
-            <name>dfs.namenode.http-address.CLUSTER.NN1</name>
-            <value>NN1:50070</value>
-        </property>
-        <property>
-            <name>dfs.namenode.rpc-address.CLUSTER.NN2</name>
-            <value>NN2:8020</value>
-        </property>
-        <property>
-            <name>dfs.namenode.http-address.CLUSTER.NN2</name>
-            <value>NN2:50070</value>
-        </property>
-        <property>
-            <name>dfs.datanode.http-address.CLUSTER.DN2</name>
-            <value>DN2:50075</value>
-        </property>
-        <property>
-            <name>dfs.datanode.rpc-address.CLUSTER.DN2</name>
-            <value>DN2:8020</value>
-        </property>
-        <property>
-            <name>dfs.namenode.shared.edits.dir</name>
-            <value>qjournal://JN1:8485;JN2:8485;JN3:8485/CLUSTER</value>
-        </property>
-        <property>
-            <name>dfs.client.failover.proxy.provider.CLUSTER</name>
-            <value>org.apache.hadoop.hdfs.server.namenode.ha.ConfiguredFailoverProxyProvider</value>
-        </property>
-        <property>
-            <name>dfs.ha.fencing.methods</name>
-            <value>sshfence</value>
-        </property>
-        <property>
-            <name>dfs.ha.fencing.ssh.private-key-files</name>
-            <value>$HOME/.ssh/id_rsa</value>
-        </property>
-        <property>
-            <name>dfs.ha.automatic-failover.enabled</name>
-            <value>true</value>
-        </property>
-        <property>
-            <name>dfs.webhdfs.enabled</name>
-            <value>true</value>
-        </property>
-        <!--
-        <property>
-            <name>dfs.hosts</name>
-            <value>$HADOOP_HOME/etc/hadoop/workers</value>
-        </property>
-        -->
+    <property>
+        <name>dfs.namenode.name.dir</name>
+        <value>
+            /hdfs_data/hdfs01/namenode,
+            /hdfs_data/hdfs02/namenode
+        </value>
+    </property>
+    <property>
+        <name>dfs.datanode.data.dir</name>
+        <value>
+            /hdfs_data/hdfs01/datanode,
+            /hdfs_data/hdfs02/datanode
+        </value>
+    </property>
+    <property>
+        <name>dfs.journalnode.edits.dir</name>
+        <value>/hdfs_data/hdfs01/journalnode</value>
+    </property>
+
+    <property>
+        <name>dfs.nameservices</name>
+        <value>CLUSTER</value>
+    </property>
+    <property>
+        <name>dfs.ha.namenodes.CLUSTER</name>
+        <value>
+            NN1,
+            NN2
+        </value>
+    </property>
+    <property>
+        <name>dfs.namenode.rpc-address.CLUSTER.NN1</name>
+        <value>NN1:8020</value>
+    </property>
+    <property>
+        <name>dfs.namenode.http-address.CLUSTER.NN1</name>
+        <value>NN1:50070</value>
+    </property>
+    <property>
+        <name>dfs.namenode.rpc-address.CLUSTER.NN2</name>
+        <value>NN2:8020</value>
+    </property>
+    <property>
+        <name>dfs.namenode.http-address.CLUSTER.NN2</name>
+        <value>NN2:50070</value>
+    </property>
+    <property>
+        <name>dfs.namenode.shared.edits.dir</name>
+        <value>qjournal://JN1:8485;JN2:8485;JN3:8485/CLUSTER</value>
+    </property>
+    <property>
+        <name>dfs.client.failover.proxy.provider.CLUSTER</name>
+        <value>org.apache.hadoop.hdfs.server.namenode.ha.ConfiguredFailoverProxyProvider</value>
+    </property>
+    <property>
+        <name>dfs.ha.fencing.methods</name>
+        <value>sshfence</value>
+    </property>
+    <property>
+        <name>dfs.ha.fencing.ssh.private-key-files</name>
+        <value>$HOME/.ssh/id_rsa</value>
+    </property>
+    <property>
+        <name>dfs.ha.automatic-failover.enabled</name>
+        <value>true</value>
+    </property>
+    <property>
+        <name>dfs.webhdfs.enabled</name>
+        <value>true</value>
+    </property>
+    <property>
+        <name>dfs.permissions.enabled</name>
+        <value>false</value>
+    </property>
+    <!--
+    <property>
+        <name>dfs.hosts</name>
+        <value>$HADOOP_HOME/etc/hadoop/workers</value>
+    </property>
+    -->
 </configuration>
 EOF
 
@@ -205,7 +171,7 @@ cat <<EOF | tee $HADOOP_HOME/etc/hadoop/yarn-site.xml
 
     <property>
         <name>yarn.resourcemanager.hostname</name>
-        <value>master01</value>
+        <value>MASTER01</value>
     </property>
     <property>
         <name>yarn.web-proxy.address</name>
@@ -246,9 +212,9 @@ cat <<EOF | tee -a $ZOOKEEPER_HOME/conf/zoo.cfg
 dataLogDir=$ZOOKEEPER_HOME/logs
 maxClientCnxns=0
 maxSessionTimeout=180000
-server.1=master01:2888:3888
-server.2=master02:2888:3888
-server.3=worker01:2888:3888
+server.1=MASTER01:2888:3888
+server.2=MASTER02:2888:3888
+server.3=WORKER01:2888:3888
 EOF
 sudo mkdir -p $ZOOKEEPER_HOME/data
 sudo mkdir -p $ZOOKEEPER_HOME/logs
@@ -260,9 +226,11 @@ sudo chown -R $(id -u):$(id -g) $ZOOKEEPER_HOME/logs
 # Start zookeeper server
 $ZOOKEEPER_HOME/bin/zkServer.sh start
 
+## format전 해주어야하는 작업
 cd /usr/local/hadoop/sbin
 stop-all.sh
 start-all.sh
+
 # Init format (namenode 1)
 hdfs namenode -format
 
@@ -294,4 +262,10 @@ mapred --daemon start historyserver
 
 # namenode 1
 start-dfs.sh
-start-all.sh
+
+#master01 stanby 상태 -> active 상태로
+hdfs haadmin -transitionToActive NN1 --forcemanual
+
+# 데이터 저장할 폴더 생성 /data/weather/
+hdfs dfs -mkdir /data
+hdfs dfs -mkdir /data/weather

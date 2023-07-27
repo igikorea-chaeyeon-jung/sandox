@@ -3,21 +3,28 @@
  <name>dfs.webhdfs.enabled</name>
     <value>true</value>
 
-#서비스 상태를 조회하기 위해 hdfs 커맨드의 haadmin 옵션을 활용
- hdfs haadmin -getAllServiceState 
+        <property>
+            <name>dfs.permissions.enabled</name>
+            <value>false</value>
+        </property>
 
-#stanby 상태 -> active 상태로
+#서비스 상태를 조회하기 위해 hdfs 커맨드의 haadmin 옵션을 활용
+hdfs haadmin -getAllServiceState 
+
+#master01 stanby 상태 -> active 상태로
 hdfs haadmin -transitionToActive NN1 --forcemanual 
 
 # 폴더 생성
 hdfs dfs -mkdir /data
 hdfs dfs -mkdir /data/weather
 
-# master 서버 host 공개 ip로 설정해줘야함
-54.180.83.185 
-54.180.159.210
+# 서버 host 공개 ip로 설정해줘야함
+54.180.83.185  master01
+54.180.159.210 master02
 
-#host파일 master서버에 추가해줘야함(hdfs 노드들) -> 그래야 하둡에 접근할 수있다.
+#k8s master서버에 추가해줘야함(hdfs 서버 ip, host명 정보들)
+
+---------------------------------------------
 
 # kafka : 대용량 실시간 메세징 시스템 (?)
 # 대용량의 데이터, 트래픽을 안정적이고 빠르게 처리하는 데 사용.

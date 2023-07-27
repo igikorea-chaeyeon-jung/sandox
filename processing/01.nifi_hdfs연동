@@ -1,0 +1,28 @@
+
+kubectl cp /usr/local/etc/hdfs-site.xml nifi-0:/opt/nifi/flow
+kubectl cp /usr/local/etc/core-site.xml nifi-0:/opt/nifi/flow
+
+kubectl cp /dev/null nifi:/etc/hosts
+
+pod 내 cp 로 구성파일 추가하고 hosts 수정해줌
+
+echo "3.39.191.254 MASTER01 NN1 JN1 CLUSTER
+13.124.44.227 MASTER02 NN2 DN1 JN2
+3.37.127.147 WORKER01 DN2 JN3" | kubectl exec -i nifi-0 -- bash
+kubectl exec -i nifi-0 -- bash -c "rm /opt/nifi/flow/core-site.xml"
+# Kubernetes-managed hosts file.721
+127.0.0.1       localhost
+::1     localhost ip6-localhost ip6-loopback
+fe00::0 ip6-localnet
+fe00::0 ip6-mcastprefix
+fe00::1 ip6-allnodes
+fe00::2 ip6-allrouters
+10.233.71.36    nifi-0.nifi-headless.default.svc.cluster.local  nifi-0
+
+3.39.191.254 MASTER01 NN1 JN1 CLUSTER
+13.124.44.227 MASTER02 NN2 DN1 JN2
+3.37.127.147 WORKER01 DN2 JN3
+
+echo "172.31.37.212 MASTER01 NN1 JN1 CLUSTER
+172.31.37.42 MASTER02 NN2 DN1 JN2
+172.31.43.255 WORKER01 DN2 JN3" >> /etc/hosts

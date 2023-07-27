@@ -10,11 +10,11 @@ sudo cp /etc/resolv.conf /etc/resolv.conf.backup
 ###################################
 ######## DESCRIBE MANUALLY ########
 ###################################
-MASTER_01=172.31.46.158
+MASTER_01=172.31.41.163
 # MASTER_02=172.31.0.0
 # MASTER_03=172.31.0.0
-WORKER_01=172.31.46.114
-WORKER_02=172.31.47.84
+WORKER_01=172.31.33.108
+WORKER_02=172.31.40.198
 # WORKER_03=172.31.0.0
 # WORKER_04=172.31.0.0
 # WORKER_05=172.31.0.0
@@ -240,10 +240,11 @@ kubectl create ingress jupyterhub --class=nginx \
 helm upgrade --install nifi nifi \
   --repo https://cetic.github.io/helm-charts \
   --set auth.admin="CN=admin, OU=NIFI" \
-  --set auth.singleUser.username="igibabo" \
-  --set auth.singleUser.password="changemechangeme" \
+  --set auth.singleUser.username="igichaen" \
+  --set auth.singleUser.password="chaeyeonchaeyeon" \
   --set properties.webProxyHost="nifi.cycloudtest.onmetaverses.com" \
-  --set replicaCount=3 \
+  --set replicaCount=1 \
+  --set sts.hostAliases[0].ip="3.39.191.254" --set sts.hostAliases[0].hostnames[0]="master01" --set sts.hostAliases[0].hostnames[1]="nn1" \
   --set certManager.enabled=true \
   --set certManager.additionalDnsNames={"nifi.cycloudtest.onmetaverses.com"}
 kubectl get svc nifi -o yaml | sed "s/port: 8443/port: 443/" - | kubectl replace -f -
@@ -252,6 +253,8 @@ kubectl create ingress nifi --class=nginx \
   --annotation nginx.ingress.kubernetes.io/backend-protocol="HTTPS"
 
 
+helm upgrade --install nifi nifi --set sts.hostAliases[0].ip="3.39.191.254" --set sts.hostAliases[0].hostnames[0]="MASTER01" --set sts.hostAliases[0].hostnames[1]="NN1" 
+  
 
 #########################
 ######## Testing ########
@@ -282,3 +285,8 @@ do
     echo "==== Shut down $node ===="
     ssh $node sudo shutdown -h 1
 done
+
+#호스트 파일 추가
+3.39.191.254 MASTER01
+13.124.44.227 MASTER02
+3.37.127.147 WORKER01

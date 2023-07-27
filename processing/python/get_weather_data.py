@@ -34,7 +34,7 @@ from hdfs import InsecureClient
 def write_json_to_hdfs(json_data, hdfs_path):
     
     # HDFS 클라이언트 생성
-    client = InsecureClient('http://54.180.83.185:50070', user='centos')
+    client = InsecureClient('http://3.39.191.254:50070', user='centos')
 
     # JSON 데이터를 HDFS에 쓰기
     with client.write(hdfs_path, overwrite=True, encoding='utf-8') as writer:
