@@ -1,0 +1,35 @@
+시나리오: 비트코인API로부터 데이터를 받아 실시간으로 대시보드를 제공할 수있도록 한다.
+
+1. UPbit에서 코인 가격에 대해 API로 제공하고있다.
+2. API에 있는 데이터를 받아 Kafka에 넣을 수 있는 Producer를 만들 수 있다.
+3. Kafka에서 데이터를 가져가는 Consumer를 만들 수 있다.
+4. 스트리밍으로 대시보드를 제공하기 위해 Elastic 스택을 활용할 수 있다.
+
+UPbit API -> Kafka -> Logstash -> Elsticsearch -> Kibana 으로 데이터 파이프라인을 구성
+
+실행순서: 
+1. UPbit 회원가입 후 Access, Secret키 발급
+2. 코드 실행 
+```
+    import requests
+    import pyupbit
+    
+    access = "{access_key}"          # 본인 값으로 변경
+    secret = "{secret_key}"          # 본인 값으로 변경
+    upbit = pyupbit.Upbit(access, secret)
+    
+    querystring = {"markets":"KRW-BTC"} #비트코인
+    
+    url = f"https://api.upbit.com/v1/ticker"
+    
+    headers = {"accept": "application/json"}
+    
+    response = requests.get(url, headers=headers, params=querystring)
+    
+    response.json()
+```
+
+
+
+
+
